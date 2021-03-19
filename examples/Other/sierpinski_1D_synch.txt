@@ -1,0 +1,53 @@
+# sCRN implementation of a synchronized XOR block cellular automaton
+#
+# This uses the general construction shown in Figure 7 of Qian & Winfree (2014)
+# but for a synchronous block cellular automata with rules
+#   {x, y} --> {x+y mod 2, x+y mod 2}
+# applied within alternating blocks (pairs of site) on alternate time steps.
+#
+# While here just the one-dimensional block cellular automaton is emulated,
+# and it's hard to see any interesting pattern emerging,
+# the space-time history of this cellular automaton generates the
+# Sierpinksi triangle.  (E.g. that's what you would see in a two-dimensional
+# implementation like the Rule 110 example, or in a tile self-assembly model.)
+#
+# The initial condition is chosen such that the cellular automaton
+# will become all-zero after about 15 steps of synchronized updates.
+
+# Run settings
+pixels_per_node    = 30
+speedup_factor     = 5
+max_duration       = 100
+node_display       = Text
+
+!START_COLORMAP
+{boundary} EL, ER: (0,255,0)
+{0} 0AR, 0AL, 0BR, 0BL: (255,255,255)
+{1} 1AR, 1AL, 1BR, 1BL: (63,63,63)
+!END_COLORMAP
+
+!START_TRANSITION_RULES
+# edge conditions
+(1) EL + 0AR -> EL + 0AL
+(1) EL + 0BR -> EL + 0BL
+(1) 0AL + ER -> 0BR + ER
+(1) 0BL + ER -> 0AR + ER
+(1) EL + 1AR -> EL + 1AL
+(1) EL + 1BR -> EL + 1BL
+(1) 1AL + ER -> 1BR + ER
+(1) 1BL + ER -> 1AR + ER
+
+# cellular automaton rules
+(1) 0AL + 0AR -> 0BR + 0AL
+(1) 0BL + 0BR -> 0AR + 0BL
+(1) 0AL + 1AR -> 1BR + 1AL
+(1) 0BL + 1BR -> 1AR + 1BL
+(1) 1AL + 0AR -> 1BR + 1AL
+(1) 1BL + 0BR -> 1AR + 1BL
+(1) 1AL + 1AR -> 0BR + 0AL
+(1) 1BL + 1BR -> 0AR + 0BL
+!END_TRANSITION_RULES
+
+!START_INIT_STATE
+EL 0AR 0BL 0BR 0AL 0AR 0BL 0BR 0AL 0AR 0BL 0BR 0AL 0AR 0BL 1BR 1AL 0AR 0BL 0BR 0AL 0AR 0BL 0BR 0AL 0AR 0BL 0BR 0AL 0AR 0BL ER
+!END_INIT_STATE

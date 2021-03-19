@@ -1,31 +1,39 @@
 # sCRN implementation of a scout ant finding food and returning home
 #
-# A simple but not very smart scout ant.
+# Erik's (genius) scount ant
 #
-# A = scount ant
-# O = empty
-# P = pheromone path
+# H = home base
+# SA = scount ant
+# FA = ant with food
+# BA = bored ant returning home
+# HA = ant hiding at home
 # F = food
-# H = food-carrying ant going home
-#
-# Mostly it fails.  The rng seed is for one of the few where it succeeds.
-#
-# Can you devise a more effective ant?
+# O = empty
+# P = path
+# E = edge of path
+# R = residual path to be removed
+# D = path destructor
 
 # Run settings
-pixels_per_node    = 20
+pixels_per_node    = 10
 speedup_factor     = 5
 #rng_seed           = 123123123
-max_duration       = 100
+max_duration       = 500
 node_display       = Color
 
 # Transition rules
 !START_TRANSITION_RULES
-A + O -> P + A (1)
-A + F -> P + H (1)
-H + P -> O + H (1)
-A + P -> O + A (0.05)
-H + O -> P + H (0.1)
+SA + O -> P + SA (1)
+SA + F -> P + FA (1)
+FA + P -> O + FA (1)
+O + P -> E + P (10)
+SA + P -> R + BA (0.01)
+BA + P -> R + BA (1)
+BA + H -> D + HA (1)
+D + R -> D + D (10)
+D + E -> D + D (10)
+D -> O (1)
+HA + O -> H + SA (0.1)
 !END_TRANSITION_RULES
 
 !START_INIT_STATE
@@ -41,13 +49,6 @@ O O O O O O O O O O O O O
 O O O O O O O O O O O O O
 O O O O O O O O O O O O O
 O O O O O O O O O O O O O
-O O O O O O A O O O O O O
+O O O O O O O O O O O SA H
 !END_INIT_STATE
 
-!START_COLORMAP
-{Empty} O: (240, 240, 240)
-{Ant} A: (175, 175, 255)
-{Ant with Food} H: (1, 100, 255)
-{Food} F: (140,81, 10)
-{Path} P: (200, 0, 0)
-!END_COLORMAP

@@ -1,17 +1,19 @@
 # Logic circuit rule set optimized for readability and, to a lesser extent,
 #   compressed physical layout.
 # Gates lock during computation, allowing sequential gate logic.
-
+#
+# A 46-rule, compressed variant using only NOR gates is included in
+# Box5-logic_circuit_transition_rules_compressed.txt
 
 ### WIRE RULES
-### 2 rules
+### 2 rules, 3 species
 # Move
 (1) 0 + B -> B + 0
 (1) 1 + B -> B + 1
 
 
 ### OR GATE
-### 14 rules
+### 14 rules, 15 species
 # Load
 (1) 0 + BRx -> B + 0Rx
 (1) 1 + BRx -> B + 1Rx
@@ -33,7 +35,7 @@
 
 
 ### XOR GATE
-### 14 rules
+### 14 rules, 15 species
 # Load
 (1) 0 + BXx -> B + 0Xx
 (1) 1 + BXx -> B + 1Xx
@@ -55,7 +57,7 @@
 
 
 ### AND GATE
-### 14 rules
+### 14 rules, 15 species
 # Load
 (1) 0 + BAx -> B + 0Ax
 (1) 1 + BAx -> B + 1Ax
@@ -76,8 +78,8 @@
 (1) RAz + HAy -> BAz + BAy
 
 
-### SYNCH GATE
-### 10 rules
+### SYNC GATE
+### 10 rules, 7 species
 # Load
 (1) 0 + BSx -> B + 0Sx
 (1) 1 + BSx -> B + 1Sx
@@ -93,7 +95,7 @@
 (1) 1Sz + B -> BSy + 1
 
 ### REPEATER GATE
-### 6 rules
+### 6 rules, 6 species
 # Load
 (1) 0 + BPx -> B + 0Px
 (1) 1 + BPx -> B + 1Px
@@ -105,20 +107,20 @@
 (1) 1Pk + B -> BPy + 1
 
 ### NOT gate rules
-### 6 rules
+### 6 rules, 6 species
 # Load
 (1) 0 + BNx -> B + 0Nx
 (1) 1 + BNx -> B + 1Nx
 # Logic
-(1) 0Nx + BNy -> BNx + 1Nk
-(1) 1Nx + BNy -> BNx + 0Nk
+(1) 0Nx + BNy -> BNx + 1Ny
+(1) 1Nx + BNy -> BNx + 0Ny
 # Unload
-(1) 0Nk + B -> BNy + 0
-(1) 1Nk + B -> BNy + 1
+(1) 0Ny + B -> BNy + 0
+(1) 1Ny + B -> BNy + 1
 
 
 ### 2-FAN-OUT
-### 10 rules
+### 10 rules, 11 species
 # Load
 (1) 0 + BF -> B + 0F
 (1) 1 + BF -> B + 1F
@@ -134,7 +136,7 @@
 (1) 1Fy + B -> BFy + 1
 
 ### 3-FAN-OUT
-### 14 rules
+### 14 rules, 14 species
 # Load
 (1) 0 + BF3 -> B + 0FF
 (1) 1 + BF3 -> B + 1FF
@@ -154,7 +156,7 @@
 (1) 1Fz3 + B -> BFz3 + 1
 
 ### WIRE CROSS
-### 20 rules
+### 20 rules, 19 species
 # Load
 (1) 0 + BCx -> B + 0Cx
 (1) 1 + BCx -> B + 1Cx
@@ -181,4 +183,4 @@
 (1) RCz + BC -> BCz + RCcz
 (1) RCcz + HCy -> BC + BCy
 
-## ^ 110 rules ^ ##
+## ^ 110 rules, 111 species ^ ##

@@ -20,6 +20,7 @@ import os
 
 from surface_crns.options.option_processor import SurfaceCRNOptionParser
 from surface_crns.views.time_display import TimeDisplay
+from surface_crns.views.text_display import TextDisplay
 from surface_crns.views.grid_display import SquareGridDisplay, HexGridDisplay
 from surface_crns.views.legend_display import LegendDisplay
 from surface_crns.simulators.queue_simulator import QueueSimulator
@@ -54,6 +55,15 @@ button_width   = 60
 button_height  = 30
 button_buffer  = 5
 MIN_GRID_WIDTH = 6 * button_width + 10 * button_buffer
+
+##############
+# Exit Codes #
+##############
+FINISHED_CLEAN = 0
+RUNNING        = -1
+MAX_TIME       = 1
+MAX_PIXELS     = 2
+current_state = RUNNING
 
 ###########################
 # MOVIE CAPTURE CONSTANTS #
@@ -166,6 +176,11 @@ def simulate_surface_crn(manifest_filename, display_class = None,
     seed = simulation.seed
     event_history = EventHistory()
 
+    if not opts.capture_directory is None:
+        simulation.pixels_saved = 0
+        simulation.frame_number = 0
+        simulation.capture_time = 0
+
     ################
     # PYGAME SETUP #
     ################
@@ -237,6 +252,15 @@ def simulate_surface_crn(manifest_filename, display_class = None,
         (play_button.rect.right + 4*button_buffer, button_y,
          button_width * 1.1, button_height),
                             caption = 'Uncache')
+    save_image_button = PygButton(rect =
+        (button_buffer, button_y, 30, button_height))
+    assets_folder = os.path.join(surface_crns.__path__[0], "assets")
+    camera_file = os.path.join(assets_folder, "camera.png")
+    yellow_camera_file = os.path.join(assets_folder, "camera_yellow.png")
+    green_camera_file  = os.path.join(assets_folder, "camera_green.png")
+    save_image_button.setSurfaces(camera_file, green_camera_file,
+                                  yellow_camera_file)
+
 
     display_height = max(legend_display.display_height + \
                 2*legend_display.VERTICAL_BUFFER + time_display.display_height,
@@ -286,9 +310,15 @@ def simulate_surface_crn(manifest_filename, display_class = None,
         step_button.draw(display_surface)
         play_button.draw(display_surface)
         clip_button.draw(display_surface)
+        save_image_button.draw(display_surface)
 
     pygame.display.flip()
     update_display(opts, simulation, FRAME_DIRECTORY)
+
+    if "SDL_VIDEODRIVER" in os.environ:
+        real_time = os.environ["SDL_VIDEODRIVER"] != "dummy"
+    else:
+        real_time = True
 
     # State variables for simulation
     next_reaction_time = 0
@@ -299,6 +329,10 @@ def simulate_surface_crn(manifest_filename, display_class = None,
     first_frame = True
     last_frame  = False
     running_backward = False
+
+    # Resource limit flags
+    terminate = False
+    termination_string = ""
 
     print("Beginning simulation....")
     # Iterate through events
@@ -378,12 +412,30 @@ def simulate_surface_crn(manifest_filename, display_class = None,
                 event_history.clip()
                 simulation.time = time
                 simulation.reset()
-                for rxn in list(simulation.event_queue.queue):
+                for rxn in list(simulation.event_queue):
                     print(rxn)
+            if 'click' in save_image_button.handleEvent(event):
+                base_name = \
+                    manifest_filename.split(os.path.sep)[-1].split(".")[0]
+                save_name = base_name + "_snapshot.png"
+                legend_name = base_name + "_legend.png"
+                grid_image = display_surface.subsurface(
+                                (grid_display.x_pos,
+                                 grid_display.y_pos,
+                                 grid_display.display_width,
+                                 grid_display.display_height))
+                pygame.image.save(grid_image, save_name)
+                legend_image = display_surface.subsurface(
+                                (legend_display.x_pos,
+                                 legend_display.y_pos,
+                                 legend_display.display_width,
+                                 legend_display.display_height))
+                pygame.image.save(legend_image, legend_name)
             if event.type == pygl.QUIT:
                 if opts.saving_movie:
                     movie_file.close()
-                cleanup_and_exit(simulation)
+                current_state = FINISHED_CLEAN
+                cleanup_and_exit(simulation, current_state)
         # Don't do anything if paused.
         if not running:
             pygame.display.update()
@@ -466,30 +518,43 @@ def simulate_surface_crn(manifest_filename, display_class = None,
         if opts.debug:
             print("Updating display.")
         update_display(opts, simulation, FRAME_DIRECTORY)
-        fpsClock.tick(opts.fps)
+        if real_time:
+            fpsClock.tick(opts.fps)
 
-        # Check for simulation completion...
-        if opts.debug:
-            print("Checking for simulation completion...")
-        if event_history.at_end() and running and not running_backward and \
-           (simulation.done() or time > opts.max_duration):
-            if opts.debug:
-                print("Done! Cleaning up now.")
-            last_frame = True
-            running = False
-            # Set the time to final time when done.
-            time = opts.max_duration
-            time_display.time = time
-            time_display.render(display_surface, x_pos = 0,
-                                y_pos = 0)#opts_menu.display_height)
-            if next_reaction:
-                display_next_event(next_reaction, grid_display)
-            update_display(opts, simulation, FRAME_DIRECTORY)
-            if opts.debug:
-                print("Simulation state at final time " + \
-                      str(opts.max_duration) + ":")
-                print(str(grid))
-            if opts.capture_directory != None:
+        # Movie-capturing termination conditions
+        if not opts.capture_directory is None:
+            if simulation.pixels_saved > CUTOFF_SIZE:
+                termination_string = "Simulation terminated after " + \
+                                     str(simulation.pixels_saved) + \
+                                     " pixels saved (~" + \
+                                     str(CUTOFF_SIZE/10000000) +" Mb)."
+                current_state = MAX_PIXELS
+                terminate = True
+
+            # Check the timer. If it's been more than an hour, terminate.
+            if process_time() - simulation.init_wall_time > CUTOFF_TIME:
+                termination_string = "Simulation cut off at max " \
+                                     "processing time"
+                current_state = MAX_TIME
+                terminate = True
+
+            if simulation.done() or time > opts.max_duration:
+                termination_string = "Simulation finished."
+                current_state = FINISHED_CLEAN
+                terminate = True
+
+            if terminate:
+                display_surface = simulation.display_surface
+                width = display_surface.get_size()[0]
+                text_display = TextDisplay(width)
+                text_display.text = termination_string
+                text_display.render(display_surface, x_pos = 0, y_pos = 0)
+                frame_filename = os.path.join(FRAME_DIRECTORY,
+                            f"{opts.movie_title}_{simulation.frame_number}.png")
+                if opts.debug:
+                    print("Saving final frame at: " + frame_filename)
+                pygame.image.save(display_surface, frame_filename)
+
                 # Use ffmpeg to convert images to movie.
                 if os.name == 'nt':
                     ffmpeg_name = 'ffmpeg.exe'
@@ -522,7 +587,13 @@ def simulate_surface_crn(manifest_filename, display_class = None,
                            '-start_number', '1', # EW: might it default to
                                                  # starting with 0?
                            '-i', os.path.join(FRAME_DIRECTORY,
-                                              opts.movie_title + "_%d.jpeg"),
+                                              opts.movie_title + "_%d.png"),
+                           # Try to use better-than-default decoder
+                           '-vcodec', 'h264',
+                           # Need this for Quicktime to be able to read it
+                           '-pix_fmt', 'yuv420p',
+                           # Set a higher-than-default bitrate
+                           '-crf', '18',
                            '-an', #no audio
                            # Width and height need to be divisible by 2.
                            # Round up if necessary.
@@ -546,7 +617,31 @@ def simulate_surface_crn(manifest_filename, display_class = None,
                 if opts.debug:
                     print("Finished ffmpeg call.")
 
-                return
+                cleanup_and_exit(simulation, current_state)
+
+        # Live termination conditions
+        if opts.debug:
+            print("Checking for simulation completion...")
+        if (event_history.at_end() and running and not running_backward and \
+           (simulation.done() or time > opts.max_duration)) \
+           or terminate:
+            if opts.debug:
+                print("Done! Cleaning up now.")
+            last_frame = True
+            running = False
+            # Set the time to final time when done.
+            time = opts.max_duration
+            time_display.time = time
+            time_display.render(display_surface, x_pos = 0,
+                                y_pos = 0)#opts_menu.display_height)
+            if next_reaction:
+                display_next_event(next_reaction, grid_display)
+            update_display(opts, simulation, FRAME_DIRECTORY)
+            if opts.debug:
+                print("Simulation state at final time " + \
+                      str(opts.max_duration) + ":")
+                print(str(grid))
+
         if event_history.at_beginning() or time == 0:
             first_frame = True
 
@@ -591,19 +686,18 @@ def display_next_event(next_reaction, grid_display):
 
     return next_reaction_time
 
-def cleanup_and_exit(simulation):
+def cleanup_and_exit(simulation, current_state):
     pygame.quit()
     print("Program terminated before simulation comlete.")
     print("Simulation state at termination (T = " + str(simulation.time) + "):")
     print(str(simulation.surface))
-    sys.exit()
+    sys.exit(current_state)
 
 def update_display(opts, simulation, FRAME_DIRECTORY = None):
     if opts.capture_directory is None:
         pygame.display.update()
         pygame.display.flip()
     else:
-        print("capture directory is: " + str(opts.capture_directory))
         if FRAME_DIRECTORY is None:
             raise Exception("FRAME_DIRECTORY should be set if a capture" +
                             " directory is set.")
@@ -624,7 +718,7 @@ def update_display(opts, simulation, FRAME_DIRECTORY = None):
                 print("movie title is: " + str(opts.movie_title))
             frame_filename = os.path.join(FRAME_DIRECTORY, opts.movie_title
                                           + "_" + str(frame_number) +
-                                          ".jpeg")
+                                          ".png")
             if opts.debug:
                 print("Saving frame at: " + frame_filename)
             pygame.image.save(simulation.display_surface, frame_filename)
@@ -633,39 +727,11 @@ def update_display(opts, simulation, FRAME_DIRECTORY = None):
             simulation.capture_time = capture_time + 1./opts.capture_rate
             simulation.frame_number = frame_number + 1
 
-            # Check the space used. If it's too much, save one last frame
-            # and terminate.
+            # Add to space used.
             try:
                 simulation.pixels_saved += simulation.display_surface_size
             except AttributeError:
                 simulation.pixels_saved = simulation.display_surface_size
-
-            terminate = False
-            if simulation.pixels_saved > CUTOFF_SIZE:
-                termination_string = "Simulation terminated after " + \
-                                     str(simulation.pixels_saved) + \
-                                     " pixels saved (~" + \
-                                     str(CUTOFF_SIZE/10000000) +" Mb)."
-                teriminate = True
-
-            # Check the timer. If it's been more than an hour, terminate.
-            if process_time() - simulation.init_wall_time > CUTOFF_TIME:
-                termination_string = "Simulation cut off at max " \
-                                     "processing time"
-                terminate = True
-
-            if terminate:
-                text_display = TextDisplay(display_width)
-                text_display.text = termination_string
-                text_display.render(display_surface, x_pos = 0, y_pos = 0)
-                frame_filename = os.path.join(FRAME_DIRECTORY,
-                                              opts.movie_title + "_" +
-                                              str(frame_number) + ".jpeg")
-                if opts.debug:
-                    print("Saving final frame at: " + frame_filename)
-                pygame.image.save(display_surface, frame_filename)
-
-                cleanup_and_exit(simulation)
 
 if __name__ == '__main__':
     if PROFILE:
